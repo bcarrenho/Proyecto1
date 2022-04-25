@@ -1,0 +1,148 @@
+---
+title: "Proyecto1"
+author: "Maximiliano Villablanca / Benjamín Carreño / Diego Miranda"
+output: html_document
+date: '2022-04-24'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Planteamiento de hipótesis y definición de área de estudio
+
+Gracias a la tecnología, el día de hoy se pueden hacer cosas que hace años eran impensables o de ciencia ficción como hablar con una persona que está al otro lado del mundo, ir de un lugar a otro en un auto que se puede manejar solo, entre muchas otras cosas. Una de las principales razones por la que todo esto es posible es gracias a que el ser humano pudo enviar satélites al espacio, con una gran cantidad de sensores que recopilan información a cada segundo. Es gracias a estos satélites que en el día de hoy se puede observar a través de mapas digitales el camino para poder recorrer una montaña, una ciudad entera o el mundo entero. Es por todo esto que surgió la ciencia geoespacial, que analiza los datos geoespaciales, es decir, datos relativos de lugares concretos de la superficie de la tierra y como grupo tenemos el proyecto de realizar un análisis geoespacial de un lugar en específico.
+
+En este análisis, se nos ha requerido utilizar la librería Natural Earth Data, librería que se puede utilizar con el lenguaje de programación R, muy útil para realizar análisis geoespaciales. Además de esta librería, que posee una gran cantidad de información, como grupo pensamos que no es suficiente para crear un análisis geoespacial de forma correcta y completa, por lo que además utilizamos una data extraída de la página resourceweatch.org, el cuál su descripción dice que entrega información confiable para un futuro sustentable.
+
+De la página indicada anteriormente utilizamos un set de datos denominado como "Air Quality: Population Exposed to Unhealthy Levels of fine Particulate Matter (PM2.5)", el cuál contiene datos de todos los países mostrando el porcentaje de población el cual está expuesta a material particulado, que es dañino para la salud de las personas. Esto nos pareció importante debido a que el pensamiento de todo el mundo está centrado en el apoyo al medioambiente debido al cambio climático y la contaminación ambiental. Entonces nos pareció muy buena idea que de forma específica, complementar los datos de densidad de población como urban_areas (mostrando las zonas urbanas de los países, concluyendo que hay una gran densidad de la población del país) con esta data de calidad del aire en los distintos países.
+
+Nosotros preferimos centrar nuestro estudio únicamente en América, esto debido a que tenemos una visión de lo que sería el primer mundo con el tercer mundo (Norteamérica y Sudamérica). Es por todo lo descrito anteriormente que definimos nuestra hipótesis como: En los lugares del continente americano donde hay más densidad poblacional, hay más porcentaje de la población expuesta a material particulado dañino para la salud, esto debido a que existe mayor cantidad de PM2.5 que es producida principalmente por la emisión de vehículos diesel en las ciudades, entonces mientras mayor es la población de un lugar en específico (urban área) mayor será el uso de automóviles, entonces mayor será la cantidad de PM2.5 en el aire.
+
+## Obtención y limpeza de datos
+
+Una vez que ya hemos declarado nuestra hipótesis, podemos empezar a trabajar con los datos que queremos Para esto, es necesario ordenar los datos y limpiarlos para trabajar de forma precisa. En primer lugar utilizamos la data de urban areas proveniente de la página de [natural earth data](https://www.naturalearthdata.com/downloads/50m-cultural-vectors/50m-urban-areas/) y la data del porcentaje de la población expuesto a material particulado proveniente de la página de [resource watch](https://resourcewatch.org/data/explore/Population-Exposed-to-Unhealthy-Levels-of-PM-25?section=Discover&selectedCollection=&zoom=1.151859097770938&lat=1.0062602354651866&lng=28.055930319761234&pitch=0&bearing=0&basemap=dark&labels=light&layers=%255B%257B%2522dataset%2522%253A%25226d3163f5-4e08-4830-84f1-2c5d76570a82%2522%252C%2522opacity%2522%253A1%252C%2522layer%2522%253A%2522e3797954-dfb5-44b0-8592-442c0c06eec0%2522%257D%255D&aoi=&page=1&sort=most-viewed&sortDirection=-1)
+
+En primer lugar, instalamos las librerias que utilizaremos, además de rnaturalearth:
+
+```{r}
+pacman::p_load(rnaturalearth, rnaturalearthdata, magrittr, dplyr, ggplot2, viridis,
+               sf, ggthemes,readxl, tmap, geoR, e1071)
+```
+
+Luego utilizamos la data de "countries" de la libreria rnaturaleart y la de urban areas (asociado a la variable "density")
+
+```{r}
+world <- ne_countries(scale= 50 , type='map_units', returnclass='sf')
+density <- read_sf("data/ne_50m_urban_areas.shp")
+```
+
+Eliminamos la primera columna de la data density debido a que es un dato que no necesitamos para el analisis de datos:
+
+```{r}
+density$scalerank <- NULL
+```
+
+En segundo lugar, importamos la data del porcentaje de población expuesta a material particulado:
+
+```{r}
+PM2_5 <- read_excel("data/PM2.5.xls")
+```
+
+Notamos que hay columnas que son datos de otros años con los que no trabajaremos, es decir, eliminamos las columnas a continuación:
+
+```{r}
+PM2_5[4:61] <- list(NULL)
+PM2_5[5:7] = list(NULL)
+```
+
+A continuación creamos un merge entre las dos bases de datos para luego poder crear el mapa:
+
+```{r}
+world = merge(world, PM2_5, by = "iso_a3")
+```
+
+Como solamente nos centraremos en America, filtramos la data:
+
+```{r}
+Samerica = world %>%
+  filter( region_un == "Americas")
+```
+
+Es este siguiente paso eliminaremos los datos que no necesitamos para este proyecto para aligerar un poco la data:
+
+```{r}
+Samerica[1:4] <- list(NULL)
+Samerica[2:31] <- list(NULL)
+Samerica[4:20] <- list(NULL)
+Samerica[6:13] <- list(NULL)
+```
+
+Por último, nos damos cuenta de que Guyana Francesa está vinculada a Francia y Groenlandia está vinculada con Dinamarca, siendo que estos dos paises son Europeos, por lo que decidimos eliminar estos dos paises para así no causar problemas con los datos que usaremos para el análisis de los datos:
+
+```{r}
+Samerica <- Samerica[-c(20, 28), ]
+```
+
+También le cambiamos el nombre a la columna 2017 para que pase a llamarse "% de personas expuestas a PM2.5" para que en el mapa se vea de buena manera.
+
+```{r}
+names(Samerica)[names(Samerica) == '2017'] <- '% de personas expuestas a PM2.5'
+```
+
+
+## Análisis de correlación espacial 
+
+Para el análisis de correlación, empezamos a ver la forma de la data con la que se contaba y como se comportaba para luego sacar conclusiones sobre los datos analizados, obteniendo los siguientes resultados:
+
+```{r}
+hist(
+  Samerica$`% de personas expuestas a PM2.5`,
+  col = 'red',
+  nclass = 20,
+  main = "Histograma",
+  ylab = 'Frecuencia Relativa',
+  xlab = 'Exposicion a PM2.5 (%)'
+)
+```
+
+Obteniendo los datos del histograma, se puede observar que hay una alta exposición de PM2.5 en la región observada, por lo que se puede saber de ante mano que habrán varios paises que indiquen un alto indice de este componente. De igual manera, se hizo un summary con los datos analizados para saber con mayor certeza el comportamiento de estos.
+
+```{r}
+summary(Samerica$`% de personas expuestas a PM2.5`)
+```
+
+Observando la media, se puede observar de los datos con mayor precisión que un 85.81% de los paises del continente Americano tienen un indicador alto de exposicion al PM2.5. Información que se dará de manera mas grafica en el siguiente análisis.
+
+
+## Análisis cartográfico
+
+Como análisis cartográfico, realizamos un mapa interactivo con la función tmap, donde se va a poder ver de forma agradable todo el continente americano con los distintos datos que presentamos anteriormente. Para esto primero creamos las paletas de colores utilizados para diferenciar las distintas escalas de los datos:
+
+```{r}
+pal1 <- magma(n = length(unique(density$"area_sqkm")), direction = -1)
+pal2 <- viridis(n = length(unique(Samerica$"% de personas expuestas a PM2.5")), direction = -1)
+```
+
+De la misma forma, creamos el mapa a partir de las bases de datos filtradas y limpias, con América centrada y las paletas de color aplicadas, con pal2 para el 5 de personas expuestas a PM2.5 y el pal1 a la Densidad poblacional en distintas zonas urbanas:
+
+```{r, warning = FALSE}
+tmap_mode("view")
+tmap_options(check.and.fix = TRUE)
+tm_shape(Samerica, bbox = c(-130, -30, -60, 50)) +   #Coordenadas America
+  tm_polygons(col = "% de personas expuestas a PM2.5", palette = pal2, title = "Personas expuestas a PM2.5 (%)")+
+  tm_layout(title = "América")+
+  tm_shape(density) +
+  tm_polygons(col = "area_sqkm", palette = pal1 , title = "Densidad Poblacional en ciertas zonas urbanas (hab/km2)")+
+  tm_basemap("Esri.WorldStreetMap")
+```
+
+Al momento de correr el codigo, lo primero que se puede distinguir a simple vista es el área de estudio previamente dicha, siendo esta la región de America. Además, se puede distinguir el color con que estan rellenos los diferentes paises, de una variada gama de colores gracias a la variable "pal". Lo anterior, nos da la informacion sobre el porcentaje de exposicion de las personas al PM2.5, siendo de un color amarillo lo mas bajo y morado lo mas alto. Además, la densidad pblacional de distintas zonas urbanas se puede idenificar como manchas mas pequeñas en la ubicación de las distintas ciudades del continente, como por ejemplo, Ciudad de México, representada con un color arena o la ciudad de Los Ángeles representada con un color naranja.
+
+Entonces, para realizar el análisis cartográfico, compararemos dos lugares específicos, siendo éstas dos, Nueva York en Estados Unidos y Santiago de Chile. Podemos decir que New York es una de las pocas ciudades en América con una densidad poblacional entre los 10000 y 15000 habitantes por kilómetro cuadrado, en cambio, Santiago tiene una densidad poblacional de 1413 aproximadamente. De la misma forma, centrándonos en el porcentaje de personas expuestas a PM2.5 en Estados Unidos está representada de color amarillo, es decir, menor al 20%, en cambio Chile está representada con el color morado, es decir, entre el 80% y el 100% de la población está expuesta a PM2.5.
+
+## Resultados y conclusiones
+
+Todo lo dicho anteriormente, conlleva a pensar que la relacion entre la densidad de las zonas urbanas de un pais y su porcentaje de la poblacion expuesta a PM2.5, no es una relacion directamente como tal. Esto quiere decir que la hipotesis planteada previamente, se refutaría. Lo anterior, puede ser explicado por otras variables como la tecnologias predominantes en cada país, ya que el PM2.5 es un residuo principalmente emitido por motores que funcionan por diesel y no otros combustibles mas refinados, que a pesar de ser contaminantes, no desechan la misma cantidad de material particulado. Asímismo, otra razon podría deberse a la centralizacion de cada pais; en el caso de Chile, es conocido por tener a un gran porcentaje de la población viviendo en una área geografica. En cambio, EEUU tiene varios sectores urbanos donde la poblacion vive, lo que provocaria una menor concentracion de PM2.5 y asi una menor exposicion a este componente.
+
+En conclusión, la hipótesis que nosotros hemos declarado o es válida para todos los países como hubiera sido común pensar. Para esto pudimos refutar a través de la comparación entre Santiago y New York, donde no necesariamente la densidad poblacional indica un mayor porcentaje de exposición al material particulado PM2.5
